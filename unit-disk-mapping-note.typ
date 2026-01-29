@@ -65,7 +65,7 @@ The key insight is that we can *translate* any graph into a King's subgraph, sol
 
 In order for the effect of replacing a gadget on the final solution (the MIS size) to be predictable and reversible, we require that the reduced α-tensor of the gadget differ from that of the pattern being replaced by the same constant for all boundary configurations. In other words, there should exist a constant $c$ such that for every boundary configuration:
 
-$\\tilde{\\alpha}(\\text{gadget}) = \\tilde{\\alpha}(\\text{pattern}) + c.$
+$tilde(alpha)("gadget") = tilde(alpha)("pattern") + c.$
 
 = The α-Tensor Framework
 
