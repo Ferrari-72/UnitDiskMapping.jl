@@ -76,7 +76,7 @@ An *α-tensor* is a lookup table that encodes MIS information for an *open graph
 #definition("α-Tensor Definition")[
 For an open graph $R = (V, E, partial R)$ with $|partial R| = k$ boundary vertices, the α-tensor is:
 
-$alpha(R)[i_1, i_2, ..., i_k] = max { |S| : S is an independent set of R subject to the boundary constraints }$
+$alpha(R)[i_1, i_2, ..., i_k] = max { |S| : S "is an independent set of" R "subject to the boundary constraints" }$
 
 Boundary constraints (for $j=1, ..., k$):
 - If $i_j = 1$, the boundary vertex $(partial R)_j$ must be in $S$.
