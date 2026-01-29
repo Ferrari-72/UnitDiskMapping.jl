@@ -63,9 +63,9 @@ The solution follows this pipeline:
 
 The key insight is that we can *translate* any graph into a King's subgraph, solve it there, and then *translate back* the solution.
 
-In order for the effect of replacing a gadget on the final solution (the MIS size) to be predictable and reversible, we require that the reduced α-tensor of the gadget differ from that of the pattern being replaced by the same constant for all boundary configurations. In other words, there should exist a constant $c$ such that for every boundary configuration:
+In order for the effect of replacing a gadget on the final solution (the MIS size) to be predictable and reversible, we require that the reduced α-tensor of the gadget differ from that of the pattern being replaced by the same constant for all (relevant) boundary configurations. In other words, there should exist a constant $c$ such that for every boundary configuration:
 
-$tilde(alpha)("gadget") = tilde(alpha)("pattern") + c.$
+$tilde(alpha)(R') = tilde(alpha)(P) + c.$
 
 = The α-Tensor Framework
 
@@ -76,7 +76,11 @@ An *α-tensor* is a lookup table that encodes MIS information for an *open graph
 #definition("α-Tensor Definition")[
 For an open graph $R = (V, E, partial R)$ with $|partial R| = k$ boundary vertices, the α-tensor is:
 
-$alpha(R)[i_1, i_2, ..., i_k] = max { |S| : S "is an independent set of" R "where" s_(partial R_j) = i_j "for" j=1,...,k }$
+$alpha(R)[i_1, i_2, ..., i_k] = max { |S| : S is an independent set of R subject to the boundary constraints }$
+
+Boundary constraints (for $j=1, ..., k$):
+- If $i_j = 1$, the boundary vertex $(partial R)_j$ must be in $S$.
+- If $i_j = 0$, the boundary vertex $(partial R)_j$ must not be in $S$.
 
 In words: Given a fixed configuration on the boundary, what's the maximum number of vertices we can add to form an independent set?
 ]
@@ -125,7 +129,7 @@ The α-tensor for this gadget:
 #warning(title: "Key Concept: Reduced α-Tensor")[
 The *reduced α-tensor* removes the boundary contribution:
 
-$tilde(alpha)(R)[i_1, ..., i_k] = alpha(R)[i_1, ..., i_k] - sum_j i_j$
+$tilde(alpha)(R)[i_1, ..., i_k] = alpha(R)[i_1, ..., i_k] - ∑_(j=1)^k i_j$
 
 This isolates the gadget's *internal* contribution, excluding the boundary vertices themselves.
 ]
@@ -144,6 +148,34 @@ We only care about the *difference in internal structure*.
 
 By subtracting the boundary contribution, we can directly compare the internal overhead.
 ]
+
+=== Irrelevant Boundary Configurations (Definition 3.5 idea)
+
+Not every boundary configuration is equally important. The paper introduces a notion of *irrelevant* boundary configurations (often described via a dominance/partial-order argument).
+
+Let $b$ and $b'$ be two boundary configurations (bitstrings of length $k$). Intuitively, $b'$ is *more relaxed* than $b$ if it imposes fewer boundary requirements (e.g. changing some 1s to 0s). One convenient way to formalize this is:
+
+$b' ≤ b$ (meaning: for every position, $b'_j ≤ b_j$).
+
+In this case, $b'$ is at least as compatible with the outside world as $b$ (it asks for fewer boundary vertices to be forced to 1).
+
+Now compare the gadget's *internal contribution* using the reduced α-tensor. If:
+
+$tilde(alpha)(b') ≥ tilde(alpha)(b),$
+
+then $b$ is *irrelevant* (dominated): whenever the outside graph would consider $b$, it can instead use the more relaxed $b'$ without decreasing the best achievable MIS value, and with fewer boundary constraints. Such dominated entries can be dropped/merged without changing any final maxima during composition.
+
+#block(
+  fill: rgb("#f5f5f5"),
+  inset: 1em,
+  width: 100%,
+)[
+*Important distinction*:
+
+This is different from an *infeasible* boundary configuration, where there is no valid independent set completion at all. In tropical/max-plus language, infeasible entries are represented as $-infinity$. In this project, they often appear as an empty list `[]` in `source_entry_to_configs(...)`.
+]
+
+In this project, the dominance-based pruning is implemented via a *compactification* map `mapped_entry_to_compact(::Pattern)` which merges multiple boundary encodings into a smaller set of representatives.
 
 === Example: Reduced α-Tensor
 
@@ -185,7 +217,7 @@ If the difference is *not* constant (varies with boundary configuration), then t
 
 With constant difference $c$, we can track the overhead and recover the original solution:
 
-$alpha(G_"mapped") = alpha(G_"original") + "total overhead"$
+$alpha(G_(mapped)) = alpha(G_(original)) + c_(total)$
 ]
 
 = The Complete Mapping Process
@@ -194,9 +226,9 @@ $alpha(G_"mapped") = alpha(G_"original") + "total overhead"$
 
 Find an optimal vertex ordering that minimizes *pathwidth*:
 
-$"pathwidth" = max_i "sep"(i)$
+$p w(G) = max_i s e p(i)$
 
-where $"sep"(i)$ is the number of "active" connections to unrevealed vertices.
+where $sep(i)$ is the number of "active" connections to unrevealed vertices.
 
 #block(
   fill: rgb("#f0fff0"),
