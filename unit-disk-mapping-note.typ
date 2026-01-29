@@ -226,7 +226,7 @@ $alpha(G_(mapped)) = alpha(G_(original)) + c_(total)$
 
 Find an optimal vertex ordering that minimizes *pathwidth*:
 
-$p w(G) = max_i s e p(i)$
+$pw(G) = max_i sep(i)$
 
 where $sep(i)$ is the number of "active" connections to unrevealed vertices.
 
