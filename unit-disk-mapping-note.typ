@@ -22,7 +22,7 @@
 ]
 
 #show: project.with(
-  title: [Preparing for further research is better],
+  title: [Preparing for further research],
   show-outline: true,
   show-solutions: false,
   author: "Notes by Student",
