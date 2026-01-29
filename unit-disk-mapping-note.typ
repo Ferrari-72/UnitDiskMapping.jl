@@ -129,7 +129,7 @@ The α-tensor for this gadget:
 #warning(title: "Key Concept: Reduced α-Tensor")[
 The *reduced α-tensor* removes the boundary contribution:
 
-$tilde(alpha)(R)[i_1, ..., i_k] = alpha(R)[i_1, ..., i_k] - ∑_(j=1)^k i_j$
+$tilde(alpha)(R)[i_1, ..., i_k] = alpha(R)[i_1, ..., i_k] - sum_(j=1)^k i_j$
 
 This isolates the gadget's *internal* contribution, excluding the boundary vertices themselves.
 ]
@@ -161,7 +161,7 @@ In this case, $b'$ is at least as compatible with the outside world as $b$ (it a
 
 Now compare the gadget's *internal contribution* using the reduced α-tensor. If:
 
-$tilde(alpha)(b') ≥ tilde(alpha)(b),$
+$tilde(alpha)(b') >= tilde(alpha)(b),$
 
 then $b$ is *irrelevant* (dominated): whenever the outside graph would consider $b$, it can instead use the more relaxed $b'$ without decreasing the best achievable MIS value, and with fewer boundary constraints. Such dominated entries can be dropped/merged without changing any final maxima during composition.
 
@@ -217,7 +217,7 @@ If the difference is *not* constant (varies with boundary configuration), then t
 
 With constant difference $c$, we can track the overhead and recover the original solution:
 
-$alpha(G_(mapped)) = alpha(G_(original)) + c_(total)$
+$alpha(G_"mapped") = alpha(G_"original") + c_"total"$
 ]
 
 = The Complete Mapping Process
@@ -226,9 +226,9 @@ $alpha(G_(mapped)) = alpha(G_(original)) + c_(total)$
 
 Find an optimal vertex ordering that minimizes *pathwidth*:
 
-$pw(G) = max_i sep(i)$
+$"pw"(G) = max_i "sep"(i)$
 
-where $sep(i)$ is the number of "active" connections to unrevealed vertices.
+where $"sep"(i)$ is the number of "active" connections to unrevealed vertices.
 
 #block(
   fill: rgb("#f0fff0"),
