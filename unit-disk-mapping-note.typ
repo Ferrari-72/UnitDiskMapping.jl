@@ -235,6 +235,126 @@ When comparing two gadgets $A$ and $B$ for replacement:
 We only care about the *difference in internal structure*.
 
 By filtering out dominated configurations, we only compare the relevant scenarios where each gadget could actually be optimal.
+
+#block(
+  fill: rgb("#e6f7ff"),
+  inset: 1em,
+  width: 100%,
+)[
+*Why does this matter? The complete picture:*
+
+*Stage 1: Gadget Design & Verification* (offline, done once)
+- Filter dominated configurations → reduce verification work
+- Check constant difference condition only for relevant configs
+
+*Stage 2: Graph Mapping* (prepare problem for quantum computer)
+- Replace patterns with gadgets
+- Track total overhead $c_"total"$
+
+*Stage 3: Solving on Quantum Computer* ⭐ **This is where it matters most!**
+
+When the MIS solver (quantum computer) runs on the mapped graph, it performs:
+
+$ max_(s_(partial R)) ( alpha(R)_(s_(partial R)) + alpha(G without R)_(s_(partial R)) ) $
+
+The solver **enumerates boundary configurations** and picks the one that maximizes the total score. 
+
+*Key insight*: Dominated configurations will **never** be selected in this optimization—there's always a better alternative with:
+- Fewer constraints (fewer forced boundary selections)
+- Equal or better internal MIS size
+
+Therefore:
+- ✅ Reduced α-tensor eliminates configurations that won't be selected anyway
+- ✅ This reduces both verification cost (Stage 1) and potentially solver complexity (Stage 3)
+- ✅ Only relevant configurations participate in the actual global optimization
+
+*Stage 4: Solution Recovery*
+$ "MIS"(G_"original") = "MIS"(G_"mapped") - c_"total" $
+
+The solution found by the quantum computer will have chosen one of the **relevant** boundary configurations for each gadget—exactly the ones we verified in Stage 1!
+]
+
+#block(
+  fill: rgb("#fff4e6"),
+  inset: 1em,
+  width: 100%,
+)[
+*Concrete Example: Why Reduce Saves Computation*
+
+Suppose a gadget has 3 boundary vertices → $2^3 = 8$ possible configurations.
+
+*Without filtering*:
+```
+Quantum solver evaluates all 8 configs:
+  (0,0,0): α(R) + α(G\R) = 5 + 100 = 105 ← picked!
+  (0,0,1): α(R) + α(G\R) = 3 + 98  = 101
+  (0,1,0): α(R) + α(G\R) = 3 + 98  = 101
+  (0,1,1): α(R) + α(G\R) = 2 + 96  = 98
+  (1,0,0): α(R) + α(G\R) = 4 + 99  = 103
+  (1,0,1): α(R) + α(G\R) = 2 + 97  = 99
+  (1,1,0): α(R) + α(G\R) = 2 + 97  = 99
+  (1,1,1): α(R) + α(G\R) = 7 + 85  = 92
+```
+8 evaluations needed.
+
+*With filtering* (after dominance analysis):
+```
+Relevant configs: {(0,0,0), (1,1,1)} only!
+  (0,0,0): 5 + 100 = 105 ← picked!
+  (1,1,1): 7 + 85  = 92
+
+Other configs marked as -∞ (won't be considered).
+```
+Only 2 evaluations needed! ⚡ **4× faster**
+
+*Why this works*:
+- Config (0,0,1) is dominated by (0,0,0) because:
+  - (0,0,0) has fewer constraints → α(G\R)_(0,0,0) ≥ α(G\R)_(0,0,1)
+  - (0,0,0) has better internal score → α(R)_(0,0,0) = 5 > 3 = α(R)_(0,0,1)
+  - Therefore (0,0,1) will never be optimal, no matter what the external graph is!
+- Same logic eliminates 5 other dominated configs
+- Quantum solver only needs to consider the 2 truly competitive configurations
+]
+]
+
+#warning(title: "Common Confusion: Does Filtering Change the Interface?")[
+*Question*: If we filter out configurations with more 1s (more constraints), doesn't that change the boundary interface? How can we still compare gadgets?
+
+*Answer*: **NO! The boundary structure NEVER changes.**
+
+*What stays fixed*:
+- Number of boundary vertices: $k$ (always the same)
+- Position of boundary vertices (topological structure)
+- The set of all possible configurations: ${0,1}^k$ (all $2^k$ configurations)
+
+*What changes*:
+- The **value** $tilde(alpha)(R)_s$ for each configuration $s$
+- Some configurations get marked as $-infinity$ (dominated/irrelevant)
+
+*Example*: Gadget with 2 boundary vertices
+
+Both gadgets $A$ and $B$ have **the same 4 configurations**:
+
+#align(center, table(
+  columns: (auto, auto, auto, auto),
+  table.header(
+    [*Config*], [*$tilde(alpha)(A)$*], [*$tilde(alpha)(B)$*], [*Difference*]
+  ),
+  [(0,0)], [1], [3], [+2],
+  [(0,1)], [$-infinity$], [$-infinity$], [—],
+  [(1,0)], [$-infinity$], [$-infinity$], [—],
+  [(1,1)], [2], [4], [+2],
+))
+
+✅ **Valid replacement**: For all *relevant* configs (non-$-infinity$), difference = +2 (constant)
+
+The boundary interface is **identical**: both have 2 boundary vertices at the same positions. We just ignore the dominated configurations (marked as $-infinity$) when checking the constant difference condition.
+
+*Critical requirement*: For each configuration $s$, either:
+- Both $tilde(alpha)(A)_s = -infinity$ and $tilde(alpha)(B)_s = -infinity$ (both dominated), OR
+- Both $tilde(alpha)(A)_s eq.not -infinity$ and $tilde(alpha)(B)_s eq.not -infinity$ (both relevant)
+
+If $tilde(alpha)(A)_s = -infinity$ but $tilde(alpha)(B)_s eq.not -infinity$ (or vice versa), then **A and B cannot be interchanged** because they have different sets of relevant configurations.
 ]
 
 === Boundary Configurations as Interface
@@ -444,6 +564,41 @@ If the difference is *not* constant (varies with boundary configuration), then t
 With constant difference $c$, we can track the overhead and recover the original solution:
 
 $alpha(G_"mapped") = alpha(G_"original") + c_"total"$
+]
+
+#block(
+  fill: rgb("#ffe6e6"),
+  inset: 1em,
+)[
+*Important constraint*: The constant difference condition requires that **both gadgets have the same set of relevant configurations**.
+
+*Example of invalid replacement*:
+
+Consider two gadgets with 2 boundary vertices:
+
+#align(center, table(
+  columns: (auto, auto, auto, auto),
+  table.header(
+    [*Config*], [*Gadget A*], [*Gadget B*], [*Valid?*]
+  ),
+  [(0,0)], [5], [8], [✓ Both relevant],
+  [(0,1)], [$-infinity$], [6], [❌ A dominated, B relevant],
+  [(1,0)], [$-infinity$], [$-infinity$], [✓ Both dominated],
+  [(1,1)], [7], [10], [✓ Both relevant],
+))
+
+**Problem with config (0,1)**:
+- In gadget A: this configuration is dominated (irrelevant)
+- In gadget B: this configuration is relevant (can contribute 6 to MIS)
+
+If the external graph happens to make (0,1) optimal, then:
+- Using gadget B: contributes 6
+- Using gadget A: $-infinity$ (invalid/infeasible)
+
+*Conclusion*: ❌ **Cannot replace A with B** because they have different sets of relevant configurations.
+
+*Valid replacement requires*: For every configuration $s$,
+$ (tilde(alpha)(A)_s = -infinity) arrow.l.r.double (tilde(alpha)(B)_s = -infinity) $
 ]
 
 = The Complete Mapping Process
