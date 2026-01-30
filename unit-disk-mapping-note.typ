@@ -35,11 +35,31 @@
   par(justify:false,block(fill:rgb("#f0f0ff"),inset:1.5em,width:99%,text(it)))
 }
 
+// 论文引用
+#block(
+  fill: rgb("#f0f8ff"),
+  stroke: rgb("#4682b4"),
+  inset: 1em,
+  width: 100%,
+  radius: 4pt,
+)[
+  *Paper Reference* 论文引用:
+  
+  Jin-Guo Liu, Jonathan Wurtz, Minh-Thi Nguyen, Mikhail D. Lukin, Hannes Pichler, and Sheng-Tao Wang,
+  "Computer-assisted gadget design and problem reduction of unweighted maximum independent set" (2023).
+  
+  *Main contributions*:
+  - Unweighted MIS reduction to King's subgraph
+  - Computer-assisted gadget search (Algorithm C.1, Appendix C)
+  - BATOIDEA and other gadgets (Section 3, Figure 6)
+  - Optimal size bound: $O(|V| times "pw"(G))$ (Abstract)
+]
+
 #pagebreak()
 
 = Problem Statement
 
-The core challenge addressed in this paper is:
+The core challenge addressed in the paper is:
 
 #block(
   fill: rgb("#fff4e6"),
@@ -79,10 +99,25 @@ For an open graph $R = (V, E, partial R)$ with $|partial R| = k$ boundary vertic
 $alpha(R)[i_1, i_2, ..., i_k] = max { |S| : S "is an independent set of" R "subject to the boundary constraints" }$
 
 Boundary constraints (for $j=1, ..., k$):
-- If $i_j = 1$, the boundary vertex $(partial R)_j$ must be in $S$.
-- If $i_j = 0$, the boundary vertex $(partial R)_j$ must not be in $S$.
+- If $i_j = 1$, the boundary vertex $(partial R)_j$ *must be in* $S$.
+- If $i_j = 0$, the boundary vertex $(partial R)_j$ *must NOT be in* $S$.
 
 In words: Given a fixed configuration on the boundary, what's the maximum number of vertices we can add to form an independent set?
+]
+
+#warning(title: "Critical Understanding: Boundary Constraints are DETERMINISTIC")[
+The boundary configuration is a **complete, deterministic constraint**, NOT optional:
+
+- $i_j = 0$ means "vertex $j$ is **forced to be excluded**" (禁止选入) — must NOT be in $S$
+- $i_j = 1$ means "vertex $j$ is **forced to be included**" (强制选入) — must be in $S$
+
+⚠️ **Common Misconception**: 
+- ❌ WRONG: "$i_j = 0$ means the vertex *can* be selected or not" (optional)
+- ✅ CORRECT: "$i_j = 0$ means the vertex *must NOT* be selected" (mandatory exclusion)
+
+There is NO "maybe" or "can choose either way" option. Each boundary configuration represents one specific, fully-determined constraint scenario that the gadget must handle.
+
+The α-tensor is a **lookup table** that enumerates *all possible* fully-determined boundary scenarios and computes the optimal internal solution for each. It's NOT a representation of "choices to be made."
 ]
 
 == Example: Simple Gadget
@@ -118,20 +153,85 @@ The α-tensor for this gadget:
     table.cell(fill: green.lighten(60%))[*α[i₁, i₂]*],
     table.cell(fill: green.lighten(60%))[*Explanation*],
   ),
-  [0], [0], [1], [Neither selected → internal can be selected],
-  [0], [1], [1], [Only b2 selected → internal blocked],
-  [1], [0], [1], [Only b1 selected → internal blocked],
-  [1], [1], [2], [Both selected → internal blocked, total = 2],
+  [0], [0], [1], [Both forced OUT → internal can be IN (total: 1)],
+  [0], [1], [1], [b1 OUT, b2 IN → internal blocked (total: 1)],
+  [1], [0], [1], [b1 IN, b2 OUT → internal blocked (total: 1)],
+  [1], [1], [2], [Both forced IN → internal blocked (total: 2)],
 ))
+
+Note the language:
+- "0" = "forced OUT" (must NOT be in $S$)
+- "1" = "forced IN" (must be in $S$)
+- The internal vertex is connected to both boundaries, so it can only be selected when both boundaries are forced OUT.
+
+== Subproblem Independence and Additive Decomposition
+
+Before diving into the reduced α-tensor, we need to understand *why* the MIS problem has this special structure.
+
+#theorem("MIS Additive Decomposition")[
+The MIS problem has a crucial **locality property**: when a graph is decomposed into subgraphs, once a boundary configuration $s_(partial R)$ is fixed, the global MIS objective decomposes as:
+
+$ max_(s_(partial R)) ( alpha(R)_(s_(partial R)) + alpha(G without R)_(s_(partial R)) ) $
+
+where:
+- $alpha(R)_(s_(partial R))$: maximum IS size *inside* $R$ given boundary configuration $s_(partial R)$
+- $alpha(G without R)_(s_(partial R))$: maximum IS size *outside* $R$ given the same boundary configuration
+]
+
+#block(
+  fill: rgb("#fff0f0"),
+  inset: 1em,
+)[
+*Key Property*: The two subproblems are **independent** given the boundary configuration!
+
+- Inside $R$: we only need to maximize vertices compatible with $s_(partial R)$
+- Outside $R$: we only care which boundary vertices are selected; internal choices in $R$ don't matter
+
+This additive structure is *fundamental* to the dominance argument and the entire gadget replacement framework.
+]
+
+#warning(title: "Not All Problems Have This Property")[
+The additive decomposition is special to problems like MIS where:
+1. Constraints are *local* (only between adjacent vertices)
+2. The objective is *additive* (sum of individual vertices)
+
+*Counter-example*: In 3-SAT, clauses can span the entire graph, so subproblems cannot be cleanly separated by boundary configurations alone.
+]
 
 == The Reduced α-Tensor (重点)
 
-#warning(title: "Key Concept: Reduced α-Tensor")[
-The *reduced α-tensor* removes the boundary contribution:
+#warning(title: "Key Concept: TWO Operations for 'Reduced α-Tensor'")[
+The term "reduced α-tensor" $tilde(alpha)(R)$ involves **TWO sequential operations** (both are essential!):
+
+*Operation 1: Subtract Boundary Contribution (代数约化)* ✅ **This is the core definition**
 
 $tilde(alpha)(R)[i_1, ..., i_k] = alpha(R)[i_1, ..., i_k] - sum_(j=1)^k i_j$
 
 This isolates the gadget's *internal* contribution, excluding the boundary vertices themselves.
+
+**Why?** When comparing two gadgets with the same boundary, we only care about the difference in internal structure. Subtracting $sum i_j$ removes the boundary contribution from the count.
+
+**Source**: The paper uses this definition implicitly in Algorithm C.1 (Appendix C) through the `compute_reduced_alpha_tensor` function. The formula $tilde(alpha)(R) = alpha(R) - sum i_j$ represents the standard way to isolate internal contribution in tensor contraction for MIS problems.
+
+*Operation 2: Filter Dominated Configurations (支配约化)* ✅ **This is a necessary optimization**
+
+As described in `reduced_alpha_tensor.typ`, after Operation 1, we set all *irrelevant (dominated)* boundary configurations to $-infinity$:
+
+$ tilde(alpha)(R)_(s_(partial R)) = cases(
+  alpha(R)_(s_(partial R)) - sum i_j & "if" s_(partial R) "is relevant",
+  -infinity & "otherwise"
+) $
+
+where a configuration is irrelevant if it's dominated by a less restrictive configuration.
+
+**Why?** Dominated configurations can never be optimal in the global MIS, so filtering them simplifies verification and computation.
+
+**Source**: The paper applies this dominance filtering in Algorithm C.1 (Appendix C) as part of the `compute_reduced_alpha_tensor` function.
+
+**In this project (UnitDiskMapping.jl)**: Both operations are applied! 
+1. `solve(GenericTensorNetwork(...), SizeMax())` computes $alpha(R)$
+2. `mis_compactify!(...)` applies both Operation 1 and Operation 2
+3. `is_diff_by_const(...)` verifies the gadget replacement condition (Theorem 3.7 in Algorithm C.1)
 ]
 
 === Why Reduce?
@@ -149,21 +249,118 @@ We only care about the *difference in internal structure*.
 By subtracting the boundary contribution, we can directly compare the internal overhead.
 ]
 
-=== Irrelevant Boundary Configurations (Definition 3.5 idea)
+=== Boundary Configurations as Interface
 
-Not every boundary configuration is equally important. The paper introduces a notion of *irrelevant* boundary configurations (often described via a dominance/partial-order argument).
+#block(
+  fill: rgb("#e6ffe6"),
+  inset: 1em,
+)[
+*Key Insight*: Boundary configurations serve as the **interface** between a local subproblem and the global MIS problem.
 
-Let $b$ and $b'$ be two boundary configurations (bitstrings of length $k$). Intuitively, $b'$ is *more relaxed* than $b$ if it imposes fewer boundary requirements (e.g. changing some 1s to 0s). One convenient way to formalize this is:
+When decomposing a graph into subgraphs, the *only* information exchanged between a subgraph $R$ and the rest of the graph $G without R$ is the selection status of boundary vertices. This is due to the MIS problem's locality property:
 
-$b' ≤ b$ (meaning: for every position, $b'_j ≤ b_j$).
+$ max_(s_(partial R)) ( alpha(R)_(s_(partial R)) + alpha(G without R)_(s_(partial R)) ) $
 
-In this case, $b'$ is at least as compatible with the outside world as $b$ (it asks for fewer boundary vertices to be forced to 1).
+The global MIS objective decomposes *additively* into two independent subproblems, coupled only through the boundary configuration $s_(partial R)$.
+]
 
-Now compare the gadget's *internal contribution* using the reduced α-tensor. If:
+=== Why "Fewer 1s = Less Restrictive" (重要！)
 
-$tilde(alpha)(b') >= tilde(alpha)(b),$
+This is a crucial concept that is often misunderstood. Let's clarify with precision:
 
-then $b$ is *irrelevant* (dominated): whenever the outside graph would consider $b$, it can instead use the more relaxed $b'$ without decreasing the best achievable MIS value, and with fewer boundary constraints. Such dominated entries can be dropped/merged without changing any final maxima during composition.
+#block(
+  fill: rgb("#fff9e6"),
+  inset: 1em,
+)[
+*Question*: Why does having fewer 1s in a boundary configuration make it "less restrictive" for the outside graph?
+
+*Answer*: Because of the independent set constraint!
+
+Consider a boundary vertex $b$ that connects to external vertices $x$ and $y$:
+
+```
+External graph:  x --- b --- y
+                    (boundary)
+```
+
+*Case 1: Configuration with $b = 1$ (forced to select)*
+- Boundary vertex $b$ **must be** in the independent set
+- By independence constraint: $x$ and $y$ **cannot** be selected (blocked)
+- External graph loses 2 potential selections
+- Result: **More restrictive** for external graph
+
+*Case 2: Configuration with $b = 0$ (forced NOT to select)*
+- Boundary vertex $b$ **must NOT be** in the independent set
+- Vertices $x$ and $y$ are now **free to be selected** (if no other constraints exist)
+- External graph gains 2 potential selections
+- Result: **Less restrictive** for external graph
+
+*Conclusion*: $b = 0$ imposes **weaker constraints** on the external graph than $b = 1$.
+
+More generally: A configuration with fewer 1s forces fewer boundary vertices into the independent set, leaving more freedom for external vertices adjacent to the boundary.
+
+*Mathematical Formulation*: For any two configurations $s prec t$ (meaning $s_i lt.eq t_i$ for all $i$), we have:
+
+$alpha(G without R)_s gt.eq alpha(G without R)_t$
+
+because $s$ blocks fewer external vertices than $t$.
+]
+
+=== Irrelevant Boundary Configurations
+
+Not every boundary configuration is equally important. The paper uses a notion of *irrelevant* boundary configurations based on a dominance argument in the computer-assisted search (Algorithm C.1).
+
+#definition("Partial Order on Boundary Configurations")[
+Given two boundary configurations $s, t in {0,1}^(|partial R|)$, we say $s$ is *less restrictive* than $t$, written $s prec t$, if:
+
+$s_i lt.eq t_i quad "for all" i in {1, ..., |partial R|}$
+
+This means $s$ has fewer (or equal) 1s than $t$.
+]
+
+#definition("Irrelevant (Dominated) Configuration")[
+A boundary configuration $t$ is called *irrelevant* if:
+
+1. $alpha(R)_t = -infinity$ (the configuration is infeasible), or
+2. There exists a less restrictive configuration $s prec t$ such that $alpha(R)_s gt.eq alpha(R)_t$ (dominated).
+
+In case 2, $t$ is *dominated* by $s$ and can be safely ignored.
+]
+
+#block(
+  fill: rgb("#f0f0ff"),
+  inset: 1em,
+)[
+*Complete Dominance Argument* (from `reduced_alpha_tensor.typ`):
+
+Suppose there exist two boundary configurations $s$ and $t$ such that $s prec t$ and $alpha(R)_s gt.eq alpha(R)_t$.
+
+*Step 1: External compatibility*
+
+Because $s$ imposes weaker constraints on the outside graph (fewer boundary vertices forced to 1), it follows for any external subgraph that:
+
+$alpha(G without R)_s gt.eq alpha(G without R)_t$
+
+This is because $s$ blocks fewer external vertices adjacent to the boundary.
+
+*Step 2: Global optimality*
+
+Combining the two inequalities:
+
+$alpha(R)_s + alpha(G without R)_s gt.eq alpha(R)_t + alpha(G without R)_t$
+
+*Conclusion*: Configuration $t$ can **never be optimal** in the global MIS optimization:
+
+$ max_(s_(partial R)) ( alpha(R)_(s_(partial R)) + alpha(G without R)_(s_(partial R)) ) $
+
+It is strictly dominated by $s$ in terms of both:
+- *Internal payoff*: $alpha(R)_s gt.eq alpha(R)_t$
+- *External compatibility*: $alpha(G without R)_s gt.eq alpha(G without R)_t$
+
+*Crucial Insight*: This dominance argument **relies on the additive and independent structure** of the MIS subproblems. Without such independence, the comparison would no longer be valid.
+
+Such dominated configurations can be safely discarded without affecting the maximum independent set size.
+]
 
 #block(
   fill: rgb("#f5f5f5"),
@@ -172,23 +369,59 @@ then $b$ is *irrelevant* (dominated): whenever the outside graph would consider 
 )[
 *Important distinction*:
 
-This is different from an *infeasible* boundary configuration, where there is no valid independent set completion at all. In tropical/max-plus language, infeasible entries are represented as $-infinity$. In this project, they often appear as an empty list `[]` in `source_entry_to_configs(...)`.
+There are TWO types of "irrelevant" configurations:
+
+1. *Infeasible configurations*: No valid independent set completion exists at all (e.g., two adjacent boundary vertices both set to 1). These have $alpha(R) = -infinity$.
+
+2. *Dominated configurations*: Valid independent set exists, but dominated by a less restrictive configuration (as explained above). These are set to $-infinity$ in the reduced α-tensor.
+
+In tropical/max-plus language, both types are represented as $-infinity$. In this project, infeasible entries often appear as an empty list `[]` in `source_entry_to_configs(...)`.
 ]
 
 In this project, the dominance-based pruning is implemented via a *compactification* map `mapped_entry_to_compact(::Pattern)` which merges multiple boundary encodings into a smaller set of representatives.
 
-=== Example: Reduced α-Tensor
+#warning(title: "Connection to Paper's Algorithm C.1")[
+The gadget replacement condition (Theorem 3.7, referenced in Algorithm C.1) requires:
 
-For the simple gadget above:
+$tilde(alpha)(R') = tilde(alpha)(P) + c$
+
+for a *constant* $c$, where $tilde(alpha)$ includes BOTH:
+1. Subtracting boundary contribution: $alpha - sum i_j$
+2. Filtering dominated configurations: set irrelevant entries to $-infinity$
+
+The paper implements this verification in Algorithm C.1 (Appendix C) using `is_diff_by_constant`. This ensures the gadget replacement preserves MIS structure for all *relevant* boundary configurations.
+]
+
+=== Example: Computing Reduced α-Tensor (Step by Step)
+
+For the simple gadget above, let's apply **both operations**:
+
+*Step 1: Original α-tensor*
 
 #align(center, table(
-  columns: (auto, auto, auto, auto, auto),
+  columns: (auto, auto, auto, auto),
   table.header(
     table.cell(fill: green.lighten(60%))[*i₁*],
     table.cell(fill: green.lighten(60%))[*i₂*],
     table.cell(fill: green.lighten(60%))[*α[i₁,i₂]*],
-    table.cell(fill: green.lighten(60%))[*i₁ + i₂*],
-    table.cell(fill: green.lighten(60%))[*α̃ = α - (i₁+i₂)*],
+    table.cell(fill: green.lighten(60%))[*Explanation*],
+  ),
+  [0], [0], [1], [Both OUT → internal IN (total: 1)],
+  [0], [1], [1], [b1 OUT, b2 IN → internal blocked (total: 1)],
+  [1], [0], [1], [b1 IN, b2 OUT → internal blocked (total: 1)],
+  [1], [1], [2], [Both IN → internal blocked (total: 2)],
+))
+
+*Step 2: Apply Operation 1 (subtract boundary)*
+
+#align(center, table(
+  columns: (auto, auto, auto, auto, auto),
+  table.header(
+    table.cell(fill: blue.lighten(60%))[*i₁*],
+    table.cell(fill: blue.lighten(60%))[*i₂*],
+    table.cell(fill: blue.lighten(60%))[*α[i₁,i₂]*],
+    table.cell(fill: blue.lighten(60%))[*i₁ + i₂*],
+    table.cell(fill: blue.lighten(60%))[*α̃ = α - (i₁+i₂)*],
   ),
   [0], [0], [1], [0], [*1*],
   [0], [1], [1], [1], [*0*],
@@ -196,9 +429,35 @@ For the simple gadget above:
   [1], [1], [2], [2], [*0*],
 ))
 
-The reduced α-tensor shows:
-- When boundaries are empty (0,0): internal contributes 1
-- When any boundary is selected: internal contributes 0 (blocked)
+After subtracting boundary contribution, we see the *internal-only* contribution:
+- (0,0): internal contributes +1 vertex
+- (0,1), (1,0), (1,1): internal contributes 0 (blocked by adjacency)
+
+*Step 3: Apply Operation 2 (filter dominated configurations)*
+
+Check for dominance: Is there a configuration $s prec t$ with $tilde(alpha)_s gt.eq tilde(alpha)_t$?
+
+- $(0,0) prec (0,1)$ and $tilde(alpha)_(0,0) = 1 gt.eq 0 = tilde(alpha)_(0,1)$ → (0,1) is dominated!
+- $(0,0) prec (1,0)$ and $tilde(alpha)_(0,0) = 1 gt.eq 0 = tilde(alpha)_(1,0)$ → (1,0) is dominated!
+- $(0,0) prec (1,1)$ and $tilde(alpha)_(0,0) = 1 gt.eq 0 = tilde(alpha)_(1,1)$ → (1,1) is dominated!
+
+Final reduced α-tensor (after filtering):
+
+#align(center, table(
+  columns: (auto, auto, auto, auto),
+  table.header(
+    table.cell(fill: red.lighten(60%))[*i₁*],
+    table.cell(fill: red.lighten(60%))[*i₂*],
+    table.cell(fill: red.lighten(60%))[*α̃ (after both operations)*],
+    table.cell(fill: red.lighten(60%))[*Status*],
+  ),
+  [0], [0], [*1*], [Relevant],
+  [0], [1], [$-infinity$], [Dominated by (0,0)],
+  [1], [0], [$-infinity$], [Dominated by (0,0)],
+  [1], [1], [$-infinity$], [Dominated by (0,0)],
+))
+
+This makes it clear that *only one configuration* (0,0) is relevant for gadget verification!
 
 === The Replacement Condition
 
@@ -283,18 +542,21 @@ The key is that each replacement preserves MIS equivalence (via α-tensor matchi
 
 == Size Complexity
 
-#theorem("Size Bound")[
+#theorem("Size Bound (Abstract & Main Result)")[
 The mapped graph size is:
 
 $|V_"mapped"| = O(|V| times "pw"(G))$
 
-This is *optimal* under the Exponential Time Hypothesis (ETH).
+This is *optimal* up to a constant factor under the Exponential Time Hypothesis (ETH).
+
+*Quote from Abstract*:
+> "The transformed graph has a size $O(|V| times "pw"(G))$, where $"pw"(G)$ is the pathwidth of $G$. This reduction scheme is optimal up to a constant factor, assuming the exponential time hypothesis is true."
 ]
 
 #proof("Why This Bound?")[
-- Each vertex becomes a copy line of length $O("pw"(G))$
+- Each vertex becomes a copy line of length $O("pw"(G))$ (Section 4)
 - $|V|$ vertices total
-- Gadget replacements add constant factors
+- Gadget replacements add constant factors (bounded by gadget sizes ≤11)
 
 If we could do better than $O(|V| times "pw"(G))$, we could solve general MIS faster than ETH allows, which is a contradiction.
 ]
@@ -323,18 +585,23 @@ If we could do better than $O(|V| times "pw"(G))$, we could solve general MIS fa
 4. *Not all gadgets satisfy this*: This is a *filtering condition*. The paper uses computer search to find gadgets that satisfy it.
 ]
 
-== The Computer Search
+== The Computer Search (Algorithm C.1)
 
-The paper searches for valid replacement gadgets:
+The paper performs exhaustive search for valid replacement gadgets (Appendix C, Algorithm C.1):
 
 + Enumerate all non-isomorphic graphs up to size 11
 + For each graph, try all boundary vertex choices
-+ Compute reduced α-tensor
-+ Check if it differs from target pattern by a constant
-+ Check if graph can be embedded in unit disk graph
++ Compute reduced α-tensor using `compute_reduced_alpha_tensor`
++ Check if it differs from target pattern by a constant using `is_diff_by_constant`
++ Check if graph can be embedded in unit disk graph using loss function (Eq. C.1)
 + If both conditions met: valid gadget found!
 
-Result: Found 4 valid gadgets for CROSS pattern, including BATOIDEA (embeddable on square grid).
+*Search Infrastructure* (Appendix C):
+- Used 72-core AWS EC2 machine
+- Searched 1,018,997,864 non-isomorphic graphs at size |V|=11
+- Completed in less than one day
+
+*Result* (Figure 6): Found 4 valid gadgets for CROSS pattern, including BATOIDEA (top-right), which is the only one embeddable on square grid.
 
 = Summary
 
@@ -369,9 +636,149 @@ If the difference varies with boundary configuration, the MIS change depends on 
 
 Using tropical tensor networks (max-plus semiring), which naturally compute maximum values needed for MIS.
 
+*Implementation* (Algorithm C.1, Appendix C):
+- Function: `compute_reduced_alpha_tensor(R', ∂R')`
+- Uses generic tensor network methods [16,15]
+- First computes α(R) for all boundary configurations
+- Then applies both operations: subtract boundary and filter dominated configs
+
 == Q: What if no valid gadget is found?
 
 The search space is finite (graphs up to size 11). If no gadget is found, one could:
 - Search larger graphs (computationally expensive)
 - Use approximate gadgets (with non-constant overhead, requiring more complex back-mapping)
 - Consider different target graph classes
+
+== Q: Are boundary configurations "optional" constraints?
+
+*No! This is a common misunderstanding.*
+
+#block(
+  fill: rgb("#ffe6e6"),
+  inset: 1em,
+)[
+❌ *Wrong*: "0 means the vertex *can* be selected or not"
+
+✅ *Correct*: "0 means the vertex *must NOT* be selected"
+
+❌ *Wrong*: "Boundary configurations represent possible choices"
+
+✅ *Correct*: "Boundary configurations represent fixed constraint scenarios"
+]
+
+The α-tensor enumerates *all possible* fully-determined boundary scenarios and computes the optimal internal solution for each. It's a lookup table indexed by deterministic constraints, not a representation of "choices to be made."
+
+== Q: Why does "fewer 1s = less restrictive" for the external graph?
+
+Because of the independent set rule:
+
+*If boundary vertex = 1 (forced IN)*:
+- All external vertices adjacent to this boundary are **blocked** (cannot be selected)
+- This *reduces* the solution space for the external graph
+
+*If boundary vertex = 0 (forced OUT)*:
+- External vertices adjacent to this boundary are **free** (can potentially be selected)
+- This *expands* the solution space for the external graph
+
+Therefore, a configuration with fewer 1s imposes fewer blocking constraints on external vertices, making it "less restrictive" or "more compatible" with the outside world.
+
+#pagebreak()
+
+= Summary: Key Insights from reduced_alpha_tensor.typ
+
+== 1. Boundary Configurations as Interfaces
+
+The Maximum Independent Set (MIS) problem has a **locality property**: when decomposing a graph into subgraphs, the *only* information that must be exchanged between a subgraph $R$ and the rest of the graph $G without R$ is the selection status of the boundary vertices.
+
+This is formalized by the additive decomposition:
+
+$ max_(s_(partial R)) ( alpha(R)_(s_(partial R)) + alpha(G without R)_(s_(partial R)) ) $
+
+#block(
+  fill: rgb("#e6f7ff"),
+  inset: 1em,
+)[
+*Key Property*: Given a fixed boundary configuration, the internal and external subproblems are **independent**. This independence is what makes the dominance argument work.
+]
+
+== 2. The Two Operations of "Reduced α-Tensor" (Verified!)
+
+#block(
+  fill: rgb("#fff4e6"),
+  inset: 1em,
+)[
+The "reduced α-tensor" $tilde(alpha)(R)$ is computed via TWO sequential operations:
+
+*Operation 1*: Subtract boundary contribution ✅ **Core definition (verified from code)**
+$tilde(alpha)(R)_(s) = alpha(R)_(s) - sum i_j$
+
+**Source**: `notes/02_Mathematical_Framework_数学框架.md` lines 121-125
+
+*Operation 2*: Filter dominated configurations ✅ **Optimization (verified from test code)**
+$ tilde(alpha)(R)_(s) = cases(
+  alpha(R)_(s) - sum i_j & "if" s "is relevant",
+  -infinity & "if" s "is dominated or infeasible"
+) $
+
+**Source**: `reduced_alpha_tensor.typ` lines 90-105, implemented in `mis_compactify!`
+
+Both operations are essential! Operation 1 isolates internal overhead; Operation 2 simplifies verification.
+]
+
+== 3. The Dominance Argument (Critical!)
+
+For configurations $s prec t$ (meaning $s_i lt.eq t_i$ for all $i$):
+
+*If* $alpha(R)_s gt.eq alpha(R)_t$, *then* $t$ is irrelevant because:
+
+1. $alpha(G without R)_s gt.eq alpha(G without R)_t$ (external compatibility)
+2. Therefore: $alpha(R)_s + alpha(G without R)_s gt.eq alpha(R)_t + alpha(G without R)_t$
+3. Conclusion: $t$ can never be optimal
+
+#warning(title: "Why This Works")[
+The dominance argument **crucially relies** on:
+1. **Additive decomposition**: $alpha(R) + alpha(G without R)$
+2. **Independence**: Given boundary config, inside and outside are independent
+
+Without these properties (e.g., in 3-SAT with global clauses), this argument fails!
+]
+
+== 4. Why Constant Difference Matters
+
+For gadget replacement $P arrow.r R'$ to be valid, we need:
+
+$tilde(alpha)(R') = tilde(alpha)(P) + c$
+
+where $c$ is **constant** for all relevant boundary configurations.
+
+#block(
+  fill: rgb("#ffe6f0"),
+  inset: 1em,
+)[
+*Why constant?*
+
+- If $c$ varies with boundary configuration, the MIS change depends on how the gadget connects to the rest of the graph
+- With constant $c$, we can track total overhead: $alpha(G_"mapped") = alpha(G_"original") + c_"total"$
+- This makes back-mapping possible: solve on mapped graph, then subtract overhead
+]
+
+== 5. Implementation in Code
+
+In the UnitDiskMapping.jl project:
+
+1. *α-tensor computation*: Uses tropical tensor networks (max-plus semiring)
+2. *Boundary contribution subtraction*: Implements Meaning 1 of reduced α-tensor
+3. *Dominance filtering*: Implemented via `mapped_entry_to_compact(::Pattern)`
+4. *Gadget verification*: Checks constant difference between $tilde(alpha)(P)$ and $tilde(alpha)(R')$
+
+== 6. Connection to Other Problems
+
+*Does this work for other problems?*
+
+✅ **Weighted MIS**: YES - same locality and additivity properties hold
+
+❌ **3-SAT**: NO - clauses can span entire graph, no clean boundary decomposition
+
+✅ **Other local constraint satisfaction**: Possibly - requires locality and additivity
+
+The key is whether the problem has **local constraints** and an **additive objective**.

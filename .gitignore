@@ -9,3 +9,13 @@ _local/
 .vscode
 /docs/build/
 /docs/src/generated/
+
+# Typst compiled outputs (PDF should not be in version control)
+# If you want to share PDFs, use GitHub Releases
+*.pdf
+
+# Verification and temporary notes (optional - comment out if you want to keep them)
+VERIFICATION_*.md
+CHANGES_SUMMARY.md
+PAPER_VERIFICATION_*.md
+*_clarification.md
