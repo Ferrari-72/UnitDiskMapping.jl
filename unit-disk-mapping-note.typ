@@ -200,38 +200,26 @@ The additive decomposition is special to problems like MIS where:
 
 == The Reduced α-Tensor (重点)
 
-#warning(title: "Key Concept: TWO Operations for 'Reduced α-Tensor'")[
-The term "reduced α-tensor" $tilde(alpha)(R)$ involves **TWO sequential operations** (both are essential!):
-
-*Operation 1: Subtract Boundary Contribution (代数约化)* ✅ **This is the core definition**
-
-$tilde(alpha)(R)[i_1, ..., i_k] = alpha(R)[i_1, ..., i_k] - sum_(j=1)^k i_j$
-
-This isolates the gadget's *internal* contribution, excluding the boundary vertices themselves.
-
-**Why?** When comparing two gadgets with the same boundary, we only care about the difference in internal structure. Subtracting $sum i_j$ removes the boundary contribution from the count.
-
-**Source**: The paper uses this definition implicitly in Algorithm C.1 (Appendix C) through the `compute_reduced_alpha_tensor` function. The formula $tilde(alpha)(R) = alpha(R) - sum i_j$ represents the standard way to isolate internal contribution in tensor contraction for MIS problems.
-
-*Operation 2: Filter Dominated Configurations (支配约化)* ✅ **This is a necessary optimization**
-
-As described in `reduced_alpha_tensor.typ`, after Operation 1, we set all *irrelevant (dominated)* boundary configurations to $-infinity$:
+#warning(title: "Key Concept: Reduced α-Tensor Definition")[
+The term "reduced α-tensor" $tilde(alpha)(R)$ refers to **filtering out dominated (irrelevant) boundary configurations**:
 
 $ tilde(alpha)(R)_(s_(partial R)) = cases(
-  alpha(R)_(s_(partial R)) - sum i_j & "if" s_(partial R) "is relevant",
-  -infinity & "otherwise"
+  alpha(R)_(s_(partial R)) & "if" s_(partial R) "is relevant",
+  -infinity & "if" s_(partial R) "is dominated or infeasible"
 ) $
 
-where a configuration is irrelevant if it's dominated by a less restrictive configuration.
+A configuration $t$ is *dominated* if there exists a less restrictive configuration $s prec t$ (fewer 1s) such that:
 
-**Why?** Dominated configurations can never be optimal in the global MIS, so filtering them simplifies verification and computation.
+$alpha(R)_s gt.eq alpha(R)_t$
 
-**Source**: The paper applies this dominance filtering in Algorithm C.1 (Appendix C) as part of the `compute_reduced_alpha_tensor` function.
+**Why filter?** Dominated configurations can never be optimal in the global MIS. If a configuration with fewer constraints (fewer forced selections on boundary) achieves equal or better internal MIS size, then the more restrictive configuration is irrelevant.
 
-**In this project (UnitDiskMapping.jl)**: Both operations are applied! 
-1. `solve(GenericTensorNetwork(...), SizeMax())` computes $alpha(R)$
-2. `mis_compactify!(...)` applies both Operation 1 and Operation 2
-3. `is_diff_by_const(...)` verifies the gadget replacement condition (Theorem 3.7 in Algorithm C.1)
+**Source**: The paper applies this dominance filtering in Algorithm C.1 (Appendix C) through the `compute_reduced_alpha_tensor` function. This is the optimization that makes gadget verification tractable.
+
+**In this project (UnitDiskMapping.jl)**: 
+1. `solve(GenericTensorNetwork(...), SizeMax())` computes $alpha(R)$ for all configurations
+2. `mis_compactify!(...)` filters dominated configurations
+3. `is_diff_by_const(...)` verifies the gadget replacement condition using filtered tensors
 ]
 
 === Why Reduce?
@@ -246,7 +234,7 @@ When comparing two gadgets $A$ and $B$ for replacement:
 
 We only care about the *difference in internal structure*.
 
-By subtracting the boundary contribution, we can directly compare the internal overhead.
+By filtering out dominated configurations, we only compare the relevant scenarios where each gadget could actually be optimal.
 ]
 
 === Boundary Configurations as Interface
@@ -381,20 +369,18 @@ In tropical/max-plus language, both types are represented as $-infinity$. In thi
 In this project, the dominance-based pruning is implemented via a *compactification* map `mapped_entry_to_compact(::Pattern)` which merges multiple boundary encodings into a smaller set of representatives.
 
 #warning(title: "Connection to Paper's Algorithm C.1")[
-The gadget replacement condition (Theorem 3.7, referenced in Algorithm C.1) requires:
+The gadget replacement condition (referenced in Algorithm C.1) requires:
 
 $tilde(alpha)(R') = tilde(alpha)(P) + c$
 
-for a *constant* $c$, where $tilde(alpha)$ includes BOTH:
-1. Subtracting boundary contribution: $alpha - sum i_j$
-2. Filtering dominated configurations: set irrelevant entries to $-infinity$
+for a *constant* $c$, where $tilde(alpha)$ is the α-tensor after filtering dominated configurations (setting them to $-infinity$).
 
-The paper implements this verification in Algorithm C.1 (Appendix C) using `is_diff_by_constant`. This ensures the gadget replacement preserves MIS structure for all *relevant* boundary configurations.
+The paper implements this verification in Algorithm C.1 (Appendix C) using `is_diff_by_constant`. This ensures the gadget replacement preserves MIS structure for all *relevant* (non-dominated) boundary configurations.
 ]
 
-=== Example: Computing Reduced α-Tensor (Step by Step)
+=== Example: Computing Reduced α-Tensor (Filtering Dominated Configurations)
 
-For the simple gadget above, let's apply **both operations**:
+For the simple gadget above, let's see how the dominance filtering works:
 
 *Step 1: Original α-tensor*
 
@@ -412,52 +398,33 @@ For the simple gadget above, let's apply **both operations**:
   [1], [1], [2], [Both IN → internal blocked (total: 2)],
 ))
 
-*Step 2: Apply Operation 1 (subtract boundary)*
+*Step 2: Check for dominance*
 
-#align(center, table(
-  columns: (auto, auto, auto, auto, auto),
-  table.header(
-    table.cell(fill: blue.lighten(60%))[*i₁*],
-    table.cell(fill: blue.lighten(60%))[*i₂*],
-    table.cell(fill: blue.lighten(60%))[*α[i₁,i₂]*],
-    table.cell(fill: blue.lighten(60%))[*i₁ + i₂*],
-    table.cell(fill: blue.lighten(60%))[*α̃ = α - (i₁+i₂)*],
-  ),
-  [0], [0], [1], [0], [*1*],
-  [0], [1], [1], [1], [*0*],
-  [1], [0], [1], [1], [*0*],
-  [1], [1], [2], [2], [*0*],
-))
+We check: is there a less restrictive configuration $s prec t$ with $alpha(R)_s gt.eq alpha(R)_t$?
 
-After subtracting boundary contribution, we see the *internal-only* contribution:
-- (0,0): internal contributes +1 vertex
-- (0,1), (1,0), (1,1): internal contributes 0 (blocked by adjacency)
+- $(0,0) prec (0,1)$: Configuration (0,0) has fewer 1s. Does $alpha_(0,0) = 1 gt.eq 1 = alpha_(0,1)$? **YES!** → (0,1) is dominated
+- $(0,0) prec (1,0)$: Configuration (0,0) has fewer 1s. Does $alpha_(0,0) = 1 gt.eq 1 = alpha_(1,0)$? **YES!** → (1,0) is dominated  
+- $(0,0) prec (1,1)$: Configuration (0,0) has fewer 1s. Does $alpha_(0,0) = 1 gt.eq 2 = alpha_(1,1)$? **NO!** → (1,1) is NOT dominated
+- $(0,1) prec (1,1)$: Does $alpha_(0,1) = 1 gt.eq 2 = alpha_(1,1)$? **NO!**
+- $(1,0) prec (1,1)$: Does $alpha_(1,0) = 1 gt.eq 2 = alpha_(1,1)$? **NO!**
 
-*Step 3: Apply Operation 2 (filter dominated configurations)*
-
-Check for dominance: Is there a configuration $s prec t$ with $tilde(alpha)_s gt.eq tilde(alpha)_t$?
-
-- $(0,0) prec (0,1)$ and $tilde(alpha)_(0,0) = 1 gt.eq 0 = tilde(alpha)_(0,1)$ → (0,1) is dominated!
-- $(0,0) prec (1,0)$ and $tilde(alpha)_(0,0) = 1 gt.eq 0 = tilde(alpha)_(1,0)$ → (1,0) is dominated!
-- $(0,0) prec (1,1)$ and $tilde(alpha)_(0,0) = 1 gt.eq 0 = tilde(alpha)_(1,1)$ → (1,1) is dominated!
-
-Final reduced α-tensor (after filtering):
+*Step 3: Final reduced α-tensor (after filtering)*
 
 #align(center, table(
   columns: (auto, auto, auto, auto),
   table.header(
     table.cell(fill: red.lighten(60%))[*i₁*],
     table.cell(fill: red.lighten(60%))[*i₂*],
-    table.cell(fill: red.lighten(60%))[*α̃ (after both operations)*],
+    table.cell(fill: red.lighten(60%))[*α̃[i₁,i₂]*],
     table.cell(fill: red.lighten(60%))[*Status*],
   ),
-  [0], [0], [*1*], [Relevant],
+  [0], [0], [*1*], [Relevant (not dominated)],
   [0], [1], [$-infinity$], [Dominated by (0,0)],
   [1], [0], [$-infinity$], [Dominated by (0,0)],
-  [1], [1], [$-infinity$], [Dominated by (0,0)],
+  [1], [1], [*2*], [Relevant (not dominated)],
 ))
 
-This makes it clear that *only one configuration* (0,0) is relevant for gadget verification!
+Only *two configurations* remain relevant: (0,0) and (1,1). The others are filtered out because they impose more boundary constraints but achieve no better internal MIS size.
 
 === The Replacement Condition
 
@@ -576,9 +543,9 @@ If we could do better than $O(|V| times "pw"(G))$, we could solve general MIS fa
   inset: 1em,
   width: 100%,
 )[
-1. *Isolates internal contribution*: When comparing gadgets, boundaries are the same, so we only care about internal differences.
+1. *Simplifies gadget verification*: By filtering dominated configurations, we only need to check a small subset of relevant boundary scenarios.
 
-2. *Enables constant overhead tracking*: If $tilde(alpha)(B) = tilde(alpha)(A) + c$ (constant), then replacing $A$ with $B$ always changes MIS by exactly $c$.
+2. *Enables constant overhead tracking*: If $tilde(alpha)(B) = tilde(alpha)(A) + c$ (constant for all relevant configs), then replacing $A$ with $B$ always changes MIS by exactly $c$.
 
 3. *Makes back-mapping possible*: We can track the total overhead and correct the final answer.
 
@@ -640,7 +607,7 @@ Using tropical tensor networks (max-plus semiring), which naturally compute maxi
 - Function: `compute_reduced_alpha_tensor(R', ∂R')`
 - Uses generic tensor network methods [16,15]
 - First computes α(R) for all boundary configurations
-- Then applies both operations: subtract boundary and filter dominated configs
+- Then filters out dominated configurations (irrelevant boundary scenarios)
 
 == Q: What if no valid gadget is found?
 
@@ -701,28 +668,24 @@ $ max_(s_(partial R)) ( alpha(R)_(s_(partial R)) + alpha(G without R)_(s_(partia
 *Key Property*: Given a fixed boundary configuration, the internal and external subproblems are **independent**. This independence is what makes the dominance argument work.
 ]
 
-== 2. The Two Operations of "Reduced α-Tensor" (Verified!)
+== 2. The Reduced α-Tensor: Filtering Dominated Configurations
 
 #block(
   fill: rgb("#fff4e6"),
   inset: 1em,
 )[
-The "reduced α-tensor" $tilde(alpha)(R)$ is computed via TWO sequential operations:
+The "reduced α-tensor" $tilde(alpha)(R)$ is the α-tensor **after filtering out dominated configurations**:
 
-*Operation 1*: Subtract boundary contribution ✅ **Core definition (verified from code)**
-$tilde(alpha)(R)_(s) = alpha(R)_(s) - sum i_j$
-
-**Source**: `notes/02_Mathematical_Framework_数学框架.md` lines 121-125
-
-*Operation 2*: Filter dominated configurations ✅ **Optimization (verified from test code)**
 $ tilde(alpha)(R)_(s) = cases(
-  alpha(R)_(s) - sum i_j & "if" s "is relevant",
+  alpha(R)_(s) & "if" s "is relevant (not dominated)",
   -infinity & "if" s "is dominated or infeasible"
 ) $
 
-**Source**: `reduced_alpha_tensor.typ` lines 90-105, implemented in `mis_compactify!`
+A configuration $t$ is dominated if there exists $s prec t$ (fewer 1s) with $alpha(R)_s gt.eq alpha(R)_t$.
 
-Both operations are essential! Operation 1 isolates internal overhead; Operation 2 simplifies verification.
+**Why?** Dominated configurations can never be optimal in the global MIS, so we filter them out to simplify gadget verification.
+
+**Implementation**: The `mis_compactify!` function applies this filtering.
 ]
 
 == 3. The Dominance Argument (Critical!)
@@ -759,7 +722,7 @@ where $c$ is **constant** for all relevant boundary configurations.
 
 - If $c$ varies with boundary configuration, the MIS change depends on how the gadget connects to the rest of the graph
 - With constant $c$, we can track total overhead: $alpha(G_"mapped") = alpha(G_"original") + c_"total"$
-- This makes back-mapping possible: solve on mapped graph, then subtract overhead
+- This makes back-mapping possible: solve on mapped graph, then correct for the known overhead
 ]
 
 == 5. Implementation in Code
@@ -767,9 +730,8 @@ where $c$ is **constant** for all relevant boundary configurations.
 In the UnitDiskMapping.jl project:
 
 1. *α-tensor computation*: Uses tropical tensor networks (max-plus semiring)
-2. *Boundary contribution subtraction*: Implements Meaning 1 of reduced α-tensor
-3. *Dominance filtering*: Implemented via `mapped_entry_to_compact(::Pattern)`
-4. *Gadget verification*: Checks constant difference between $tilde(alpha)(P)$ and $tilde(alpha)(R')$
+2. *Dominance filtering*: Implemented via `mis_compactify!` and `mapped_entry_to_compact(::Pattern)`
+3. *Gadget verification*: Checks constant difference between $tilde(alpha)(P)$ and $tilde(alpha)(R')$
 
 == 6. Connection to Other Problems
 
