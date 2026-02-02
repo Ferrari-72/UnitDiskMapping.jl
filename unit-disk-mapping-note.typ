@@ -237,6 +237,21 @@ We only care about the *difference in internal structure*.
 By filtering out dominated configurations, we only compare the relevant scenarios where each gadget could actually be optimal.
 
 #block(
+  fill: rgb("#f0f8ff"),
+  inset: 0.8em,
+)[
+*What is "verification"?* 
+
+**Verification** = checking if a candidate gadget $R'$ can safely replace a pattern $P$ by testing:
+
+1. Compute reduced α-tensors: $tilde(alpha)(R')$ and $tilde(alpha)(P)$
+2. Check constant difference: $tilde(alpha)(R')_s = tilde(alpha)(P)_s + c$ for all relevant configs $s$
+3. Check unit disk embeddability (Algorithm C.1)
+
+*Why filter helps*: Instead of checking all $2^k$ configurations, we only check the few relevant ones—the condition per config remains strict, but the workload is reduced.
+]
+
+#block(
   fill: rgb("#e6f7ff"),
   inset: 1em,
   width: 100%,
